@@ -12,8 +12,9 @@ import {
   addActiveItem,
   removeActiveItem,
   createInitialState,
+  moveEntities,
 } from '../src/game/rules.js';
-import { BASE_SPEED, JUMP_SPEED, MAX_SPEED } from '../src/game/constants.js';
+import { BASE_SPEED, JUMP_SPEED, MAX_SPEED, MAX_ACTIVE_ITEMS } from '../src/game/constants.js';
 
 describe('Правила игры (game rules)', () => {
   describe('Правило 1: Физика прыжка и ограничения в воздухе', () => {
@@ -100,14 +101,13 @@ describe('Правила игры (game rules)', () => {
 
       assert.equal(result.status, 'running');
       assert.equal(result.shieldSaved, true);
-      assert.equal(result.activeItems.length, 0); // щит израсходован
+      assert.equal(result.activeItems.length, 0);
     });
   });
 
   describe('Правило 4: Начисление очков и рост скорости', () => {
     it('очки начисляются пропорционально скорости и времени', () => {
       const score = updateScore(10, 300, 1);
-      // points = (300 / 10) * 1 = 30
       assert.equal(score, 40);
     });
 
@@ -121,14 +121,24 @@ describe('Правила игры (game rules)', () => {
   });
 
   describe('Правило 5: Работа со списком активных предметов (щитов)', () => {
-    it('щит успешно добавляется в список', () => {
-      const items = [];
+    it('щит успешно добавляется в список с ограничением максимума', () => {
+      let items = [];
       const item = { id: 'shield-1', type: 'shield', name: 'Щит', icon: '🛡️' };
-      const updated = addActiveItem(items, item);
+      items = addActiveItem(items, item);
 
-      assert.equal(updated.length, 1);
-      assert.equal(updated[0].id, 'shield-1');
-      assert.equal(updated[0].type, 'shield');
+      assert.equal(items.length, 1);
+      assert.equal(items[0].id, 'shield-1');
+      assert.equal(items[0].type, 'shield');
+
+      for (let i = 2; i <= MAX_ACTIVE_ITEMS + 2; i++) {
+        items = addActiveItem(items, {
+          id: `shield-${i}`,
+          type: 'shield',
+          name: 'Щит',
+          icon: '🛡️',
+        });
+      }
+      assert.equal(items.length, MAX_ACTIVE_ITEMS);
     });
 
     it('щит успешно удаляется из списка по id', () => {
@@ -144,7 +154,14 @@ describe('Правила игры (game rules)', () => {
 
     it('подбор щита на трассе добавляет его в список активных предметов', () => {
       const state = createInitialState();
-      const collectible = { id: 'shield-road-1', type: 'shield', name: 'Защитный щит', icon: '🛡️' };
+      const collectible = {
+        id: 'shield-road-1',
+        type: 'shield',
+        name: 'Защитный щит',
+        icon: '🛡️',
+        width: 32,
+        height: 32,
+      };
       const updated = handleCollectiblePickup(state, collectible);
 
       assert.equal(updated.activeItems.length, 1);
@@ -152,29 +169,50 @@ describe('Правила игры (game rules)', () => {
     });
   });
 
-  describe('Правило 6: Побитие рекорда за партию (конфетти только 1 раз)', () => {
+  describe('Правило 6: Движение сущностей (препятствий и бонусов)', () => {
+    it('бонусы перемещаются по экрану и не отфильтровываются ошибочно', () => {
+      const collectibles = [
+        { id: 'c-1', x: 200, y: 20, width: 32, height: 32, type: 'shield' },
+        { id: 'c-2', x: 100, y: 80, type: 'shield' }, // без явного указания width
+      ];
+      const moved = moveEntities(collectibles, 100, 0.5);
+
+      assert.equal(moved.length, 2);
+      assert.equal(moved[0].x, 150);
+      assert.equal(moved[1].x, 50);
+    });
+  });
+
+  describe('Правило 7: Побитие рекорда за партию (конфетти только 1 раз)', () => {
     it('салют срабатывает ровно один раз при первом превышении рекорда', () => {
-      const recordAtStart = 100;
-      let hasFiredConfetti = false;
+      const state = {
+        ...createInitialState(100),
+        status: 'running',
+        recordAtStart: 100,
+        hasFiredRecordConfettiThisRun: false,
+      };
       let fireCount = 0;
 
       const checkRecordBreak = (score) => {
-        if (!hasFiredConfetti && recordAtStart > 0 && score > recordAtStart) {
+        if (
+          !state.hasFiredRecordConfettiThisRun &&
+          state.recordAtStart > 0 &&
+          score > state.recordAtStart
+        ) {
           fireCount += 1;
-          hasFiredConfetti = true;
+          state.hasFiredRecordConfettiThisRun = true;
         }
       };
 
       checkRecordBreak(99);
       assert.equal(fireCount, 0);
 
-      checkRecordBreak(101); // первое побитие рекорда
+      checkRecordBreak(101);
       assert.equal(fireCount, 1);
 
-      checkRecordBreak(102); // дальнейший рост очков в той же партии
+      checkRecordBreak(102);
       checkRecordBreak(150);
-      checkRecordBreak(200);
-      assert.equal(fireCount, 1); // не должен повторно вызываться
+      assert.equal(fireCount, 1);
     });
   });
 });

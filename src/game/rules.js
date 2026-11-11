@@ -7,18 +7,18 @@ import {
   PLAYER_X,
   PLAYER_WIDTH,
   PLAYER_HEIGHT,
+  COLLECTIBLE_SIZE,
+  MAX_ACTIVE_ITEMS,
 } from './constants.js';
 
-/**
- * Создаёт начальное состояние игры.
- */
 export function createInitialState(record = 0, playerName = 'Дино') {
+  const safeRecord = Math.max(0, Math.min(99999, Math.floor(record) || 0));
   return {
     status: 'ready',
     score: 0,
-    record: Math.max(0, Math.floor(record)),
+    record: safeRecord,
     speed: BASE_SPEED,
-    playerName: playerName || 'Дино',
+    playerName: (playerName || 'Дино').slice(0, 30),
     player: {
       y: 0,
       vy: 0,
@@ -27,14 +27,14 @@ export function createInitialState(record = 0, playerName = 'Дино') {
     obstacles: [],
     collectibles: [],
     activeItems: [],
+    spawnTimer: 0,
+    nextSpawnInterval: 1.8,
+    recordAtStart: safeRecord,
+    hasFiredRecordConfettiThisRun: false,
     savedAt: Date.now(),
   };
 }
 
-/**
- * Правило 1: прыжок игрока.
- * Начинает прыжок только если игрок находится на земле.
- */
 export function applyJump(player) {
   if (player.isJumping || player.y > 0) {
     return player;
@@ -46,9 +46,6 @@ export function applyJump(player) {
   };
 }
 
-/**
- * Правило 2: гравитация и физика перемещения игрока.
- */
 export function updatePhysics(player, dt) {
   if (!player.isJumping && player.y === 0) {
     return player;
@@ -72,9 +69,6 @@ export function updatePhysics(player, dt) {
   };
 }
 
-/**
- * Проверка столкновения двух прямоугольников с учётом отступов (хитбоксов).
- */
 export function checkCollision(playerBox, entityBox) {
   const padX = 8;
   const padY = 6;
@@ -92,26 +86,15 @@ export function checkCollision(playerBox, entityBox) {
   return aLeft < bRight && aRight > bLeft && aBottom < bTop && aTop > bBottom;
 }
 
-/**
- * Правило 3: начисление очков и пересчёт скорости.
- */
 export function updateScore(currentScore, speed, dt) {
   const points = (speed / 10) * dt;
   return currentScore + points;
 }
 
-/**
- * Пересчёт скорости бега в зависимости от счёта.
- */
 export function calculateSpeed(score) {
   return Math.min(MAX_SPEED, BASE_SPEED + score * (SPEED_GROWTH / 10));
 }
 
-/**
- * Правило 4: обработка столкновения с препятствием.
- * Если есть активный щит, он расходуется и игра продолжается.
- * Иначе наступает gameover.
- */
 export function handleObstacleCollision(state) {
   const shieldIndex = state.activeItems.findIndex((item) => item.type === 'shield');
 
@@ -135,45 +118,35 @@ export function handleObstacleCollision(state) {
   };
 }
 
-/**
- * Правило 5: подбор щита (бонуса).
- */
-export function handleCollectiblePickup(state, collectible) {
-  if (collectible.type !== 'shield') {
-    return state;
-  }
-
-  return {
-    ...state,
-    activeItems: [
-      ...state.activeItems,
-      {
-        id: collectible.id,
-        type: 'shield',
-        name: collectible.name,
-        icon: collectible.icon,
-      },
-    ],
-  };
-}
-
-/**
- * Правило 6: работа со списком активных предметов (добавление).
- */
 export function addActiveItem(items, item) {
+  if (items.length >= MAX_ACTIVE_ITEMS) {
+    return items;
+  }
   return [...items, item];
 }
 
-/**
- * Правило 7: работа со списком активных предметов (удаление).
- */
 export function removeActiveItem(items, itemId) {
   return items.filter((item) => item.id !== itemId);
 }
 
-/**
- * Правило 8: обновление активных предметов (удаление истёкших по таймеру при наличии).
- */
+export function handleCollectiblePickup(state, collectible) {
+  if (collectible.type !== 'shield' || state.activeItems.length >= MAX_ACTIVE_ITEMS) {
+    return state;
+  }
+
+  const item = {
+    id: collectible.id,
+    type: 'shield',
+    name: collectible.name,
+    icon: collectible.icon,
+  };
+
+  return {
+    ...state,
+    activeItems: addActiveItem(state.activeItems, item),
+  };
+}
+
 export function updateActiveItems(items, dt) {
   const result = [];
   for (const item of items) {
@@ -189,21 +162,18 @@ export function updateActiveItems(items, dt) {
   return result;
 }
 
-/**
- * Перемещение препятствий и подбираемых предметов.
- */
 export function moveEntities(entities, speed, dt) {
   return entities
     .map((entity) => ({
       ...entity,
       x: entity.x - speed * dt,
     }))
-    .filter((entity) => entity.x + entity.width > -50);
+    .filter((entity) => {
+      const width = entity.width ?? COLLECTIBLE_SIZE;
+      return entity.x + width > -50;
+    });
 }
 
-/**
- * Получение текущего хитбокса игрока.
- */
 export function getPlayerBox(player) {
   return {
     x: PLAYER_X,

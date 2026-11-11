@@ -50,15 +50,6 @@ function initApp() {
     engine.setPlayerName(e.target.value);
   });
 
-  dom.bonusButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const type = btn.getAttribute('data-add-bonus');
-      if (type) {
-        engine.addBonus(type);
-      }
-    });
-  });
-
   dom.activeItemsList.addEventListener('click', (e) => {
     const removeBtn = e.target.closest('[data-remove-id]');
     if (removeBtn) {

@@ -422,6 +422,13 @@ body {
   background: #e2e8f0;
 }
 
+.chip-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  background: #f1f5f9;
+}
+
 .chip-btn:active {
   transform: translateY(1px);
 }

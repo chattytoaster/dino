@@ -32,12 +32,16 @@ describe('Сохранение и валидация через Zod (storage and
     assert.equal(Array.isArray(state.activeItems), true);
   });
 
-  it('корректно сохраняет и восстанавливает валидное состояние', () => {
+  it('корректно сохраняет и восстанавливает валидное состояние со всеми таймерами и флагами', () => {
     const storage = new MockStorage();
     const originalState = {
       ...createInitialState(250, 'Рекс-Бегун'),
       status: 'running',
       score: 120,
+      spawnTimer: 1.2,
+      nextSpawnInterval: 1.5,
+      recordAtStart: 250,
+      hasFiredRecordConfettiThisRun: true,
       activeItems: [{ id: 'bonus-1', type: 'shield', name: 'Защитный щит', icon: '🛡️' }],
     };
 
@@ -48,26 +52,27 @@ describe('Сохранение и валидация через Zod (storage and
     assert.equal(loadedState.score, 120);
     assert.equal(loadedState.record, 250);
     assert.equal(loadedState.playerName, 'Рекс-Бегун');
+    assert.equal(loadedState.spawnTimer, 1.2);
+    assert.equal(loadedState.nextSpawnInterval, 1.5);
+    assert.equal(loadedState.recordAtStart, 250);
+    assert.equal(loadedState.hasFiredRecordConfettiThisRun, true);
     assert.equal(loadedState.activeItems.length, 1);
     assert.equal(loadedState.activeItems[0].name, 'Защитный щит');
   });
 
   it('при повреждении JSON восстанавливает состояние заново без ошибок', () => {
     const storage = new MockStorage();
-    // Записываем невалидный JSON
     storage.setItem('dino-game-state', '{{corrupted_json:::123');
 
     const state = loadGameState(storage);
 
     assert.equal(state.status, 'ready');
     assert.equal(state.score, 0);
-    // Проверяем, что повреждённая запись очищена
     assert.equal(storage.getItem('dino-game-state'), null);
   });
 
   it('при порче типов данных (невалидная Zod-схема) восстанавливает состояние без ошибок', () => {
     const storage = new MockStorage();
-    // Записываем данные с невалидными типами (score строка вместо числа, неизвестный статус)
     const corruptedPayload = {
       status: 'invalid_status_unknown',
       score: 'not_a_number',
@@ -83,17 +88,39 @@ describe('Сохранение и валидация через Zod (storage and
     assert.equal(storage.getItem('dino-game-state'), null);
   });
 
-  it('при отрицательном счёте или некорректных хитбоксах Zod сбрасывает состояние заново', () => {
+  it('пустой объект без обязательных полей не проходит валидацию и сбрасывается', () => {
     const storage = new MockStorage();
-    const invalidPayload = {
-      score: -500, // отрицательный счёт недопустим (nonnegative)
-      obstacles: [{ id: 'bad', x: 10, width: -10, height: 20, type: 'single' }], // отрицательная ширина
-    };
-    storage.setItem('dino-game-state', JSON.stringify(invalidPayload));
+    // Без .default() пустой объект не должен считаться валидным состоянием
+    storage.setItem('dino-game-state', JSON.stringify({}));
 
     const state = loadGameState(storage);
 
     assert.equal(state.status, 'ready');
     assert.equal(state.score, 0);
+    assert.equal(storage.getItem('dino-game-state'), null);
+  });
+
+  it('абсурдные значения (например 1000000000) отклоняются схемой', () => {
+    const storage = new MockStorage();
+    const absurdPayload = {
+      ...createInitialState(100),
+      score: 1000000000, // недопустимо большой счёт
+    };
+    storage.setItem('dino-game-state', JSON.stringify(absurdPayload));
+
+    const state = loadGameState(storage);
+    assert.equal(state.score, 0); // сброшено к начальному
+  });
+
+  it('устаревший timestamp savedAt (1000000000) отклоняется схемой', () => {
+    const storage = new MockStorage();
+    const oldTimestampPayload = {
+      ...createInitialState(100),
+      savedAt: 1000000000, // 1970 год
+    };
+    storage.setItem('dino-game-state', JSON.stringify(oldTimestampPayload));
+
+    const state = loadGameState(storage);
+    assert.equal(state.score, 0); // сброшено к начальному
   });
 });

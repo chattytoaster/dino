@@ -12,6 +12,11 @@ export const BASE_SPEED = 320; // px / s
 export const MAX_SPEED = 680; // px / s
 export const SPEED_GROWTH = 1.8; // px / s per point
 
+export const FIXED_DT = 1 / 60;
+
+export const MAX_ACTIVE_ITEMS = 3;
+export const COLLECTIBLE_SIZE = 32;
+
 export const STORAGE_KEY = 'dino-game-state';
 
 export const ITEM_DEFINITIONS = {

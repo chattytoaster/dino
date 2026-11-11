@@ -1,4 +1,4 @@
-import { PLAYER_X } from './constants.js';
+import { MAX_ACTIVE_ITEMS, PLAYER_X } from './constants.js';
 
 export function createGameDOM(root) {
   root.innerHTML = `
@@ -54,15 +54,14 @@ export function createGameDOM(root) {
 
       <section class="inventory-section">
         <div class="inventory-header">
-          <h2>Бонусы (<span id="itemsCount">0</span>)</h2>
+          <h2>Бонусы (<span id="itemsCount">0</span>/${MAX_ACTIVE_ITEMS})</h2>
           <div class="bonus-quick-add">
-            <button type="button" class="chip-btn" data-add-bonus="shield">+ 🛡️ Добавить щит</button>
             <button type="button" class="chip-btn chip-danger" id="clearItemsBtn">Очистить список</button>
           </div>
         </div>
 
         <ul class="items-list" id="activeItemsList">
-          <li class="empty-state">Список пуст. Собери щит на трассе или добавь кнопкой выше.</li>
+          <li class="empty-state">Список пуст. Собери щит на трассе.</li>
         </ul>
       </section>
 
@@ -87,7 +86,6 @@ export function createGameDOM(root) {
     itemsCount: root.querySelector('#itemsCount'),
     activeItemsList: root.querySelector('#activeItemsList'),
     clearItemsBtn: root.querySelector('#clearItemsBtn'),
-    bonusButtons: root.querySelectorAll('[data-add-bonus]'),
   };
 }
 
@@ -104,7 +102,6 @@ export function createRenderer(dom) {
     dom.player.style.bottom = `${40 + state.player.y}px`;
     dom.player.classList.toggle('jumping', state.player.isJumping);
 
-    // Подсветка динозавра при наличии щита
     const hasShield = state.activeItems.some((i) => i.type === 'shield');
     dom.player.classList.toggle('has-shield', hasShield);
 
@@ -124,69 +121,96 @@ export function createRenderer(dom) {
       dom.startBtn.textContent = 'Старт';
     }
 
-    // 4. Поле ввода: обновляем только если пользователь сейчас не печатает в нём
+    // 4. Поле ввода
     if (document.activeElement !== dom.playerNameInput) {
       if (dom.playerNameInput.value !== state.playerName) {
         dom.playerNameInput.value = state.playerName || '';
       }
     }
 
-    // 5. Отрисовка препятствий и подбираемых щитов
-    let entitiesHtml = '';
+    // 5. Отрисовка препятствий и бонусов через безопасные методы DOM (защита от XSS)
+    const entityNodes = [];
+
     for (const obs of state.obstacles) {
+      const el = document.createElement('div');
       const cls =
         obs.type === 'tall'
           ? 'obstacle tall'
           : obs.type === 'double'
             ? 'obstacle double'
             : 'obstacle';
-      entitiesHtml += `<div class="${cls}" style="left: ${obs.x}px; width: ${obs.width}px; height: ${obs.height}px;"></div>`;
+      el.className = cls;
+      el.style.left = `${obs.x}px`;
+      el.style.width = `${obs.width}px`;
+      el.style.height = `${obs.height}px`;
+      entityNodes.push(el);
     }
 
     for (const item of state.collectibles) {
-      entitiesHtml += `
-        <div class="collectible" style="left: ${item.x}px; bottom: ${44 + item.y}px;" title="${item.name}">
-          <span>${item.icon}</span>
-        </div>
-      `;
-    }
-    dom.entitiesLayer.innerHTML = entitiesHtml;
+      const el = document.createElement('div');
+      el.className = 'collectible';
+      el.style.left = `${item.x}px`;
+      el.style.bottom = `${44 + item.y}px`;
+      el.title = item.name;
 
-    // 6. Список активных щитов
+      const span = document.createElement('span');
+      span.textContent = item.icon;
+      el.appendChild(span);
+      entityNodes.push(el);
+    }
+
+    dom.entitiesLayer.replaceChildren(...entityNodes);
+
+    // 6. Список активных щитов (безопасное построение через DOM API)
     dom.itemsCount.textContent = String(state.activeItems.length);
 
     const currentSignature = state.activeItems.map((i) => `${i.id}-${i.type}`).join('|');
 
     if (currentSignature !== renderedItemsSignature) {
       renderedItemsSignature = currentSignature;
+      dom.activeItemsList.replaceChildren();
 
       if (state.activeItems.length === 0) {
-        dom.activeItemsList.innerHTML = `
-          <li class="empty-state">Список пуст. Собери щит на трассе или добавь кнопкой выше.</li>
-        `;
+        const empty = document.createElement('li');
+        empty.className = 'empty-state';
+        empty.textContent = 'Список пуст. Собери щит на трассе.';
+        dom.activeItemsList.appendChild(empty);
       } else {
-        dom.activeItemsList.innerHTML = state.activeItems
-          .map((item) => {
-            return `
-              <li class="item-card item-${item.type}" data-item-id="${item.id}">
-                <div class="item-info">
-                  <span class="item-icon">${item.icon}</span>
-                  <div>
-                    <strong class="item-title">${item.name}</strong>
-                    <span class="item-desc">Спасает от 1 столкновения</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="item-remove-btn"
-                  data-remove-id="${item.id}"
-                  title="Удалить из списка"
-                  aria-label="Удалить ${item.name}"
-                >✕</button>
-              </li>
-            `;
-          })
-          .join('');
+        for (const item of state.activeItems) {
+          const li = document.createElement('li');
+          li.className = `item-card item-${item.type}`;
+          li.dataset.itemId = item.id;
+
+          const info = document.createElement('div');
+          info.className = 'item-info';
+
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'item-icon';
+          iconSpan.textContent = item.icon;
+
+          const textDiv = document.createElement('div');
+          const strong = document.createElement('strong');
+          strong.className = 'item-title';
+          strong.textContent = item.name;
+
+          const desc = document.createElement('span');
+          desc.className = 'item-desc';
+          desc.textContent = 'Спасает от 1 столкновения';
+
+          textDiv.append(strong, desc);
+          info.append(iconSpan, textDiv);
+
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'item-remove-btn';
+          btn.dataset.removeId = item.id;
+          btn.title = 'Удалить из списка';
+          btn.setAttribute('aria-label', `Удалить ${item.name}`);
+          btn.textContent = '✕';
+
+          li.append(info, btn);
+          dom.activeItemsList.appendChild(li);
+        }
       }
     }
   };
