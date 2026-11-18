@@ -16,6 +16,7 @@ export const FIXED_DT = 1 / 60;
 
 export const MAX_ACTIVE_ITEMS = 3;
 export const COLLECTIBLE_SIZE = 32;
+export const SHIELD_SPAWN_CHANCE = 0.12;
 
 export const STORAGE_KEY = 'dino-game-state';
 

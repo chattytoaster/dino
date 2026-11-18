@@ -12,13 +12,13 @@ import {
 } from './constants.js';
 
 export function createInitialState(record = 0, playerName = 'Дино') {
-  const safeRecord = Math.max(0, Math.min(99999, Math.floor(record) || 0));
+  const safeRecord = Math.max(0, Math.floor(record) || 0);
   return {
     status: 'ready',
     score: 0,
     record: safeRecord,
     speed: BASE_SPEED,
-    playerName: (playerName || 'Дино').slice(0, 30),
+    playerName: typeof playerName === 'string' ? playerName.slice(0, 30) : 'Дино',
     player: {
       y: 0,
       vy: 0,
@@ -91,19 +91,37 @@ export function updateScore(currentScore, speed, dt) {
   return currentScore + points;
 }
 
+export function updateRecord(state, currentScoreInt, onRecordBreak) {
+  if (currentScoreInt <= state.record) {
+    return state;
+  }
+
+  let hasFired = state.hasFiredRecordConfettiThisRun;
+  if (!hasFired && state.recordAtStart > 0 && currentScoreInt > state.recordAtStart) {
+    if (typeof onRecordBreak === 'function') {
+      onRecordBreak();
+    }
+    hasFired = true;
+  }
+
+  return {
+    ...state,
+    record: currentScoreInt,
+    hasFiredRecordConfettiThisRun: hasFired,
+  };
+}
+
 export function calculateSpeed(score) {
   return Math.min(MAX_SPEED, BASE_SPEED + score * (SPEED_GROWTH / 10));
 }
 
 export function handleObstacleCollision(state) {
-  const shieldIndex = state.activeItems.findIndex((item) => item.type === 'shield');
+  const shield = state.activeItems.find((item) => item.type === 'shield');
 
-  if (shieldIndex !== -1) {
-    const updatedItems = [...state.activeItems];
-    updatedItems.splice(shieldIndex, 1);
+  if (shield) {
     return {
       ...state,
-      activeItems: updatedItems,
+      activeItems: removeActiveItem(state.activeItems, shield.id),
       shieldSaved: true,
     };
   }

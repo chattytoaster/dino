@@ -36,20 +36,20 @@ export const PlayerSchema = z.object({
 
 export const GameStateSchema = z.object({
   status: z.enum(['ready', 'running', 'paused', 'gameover']),
-  score: z.number().min(0).max(99999),
-  record: z.number().min(0).max(99999),
+  score: z.number().min(0).finite(),
+  record: z.number().min(0).finite(),
   speed: z
     .number()
     .min(BASE_SPEED - 1)
     .max(MAX_SPEED + 50),
-  playerName: z.string().trim().min(1).max(30),
+  playerName: z.string().max(30),
   player: PlayerSchema,
   obstacles: z.array(ObstacleSchema),
   collectibles: z.array(CollectibleSchema),
   activeItems: z.array(ActiveItemSchema).max(MAX_ACTIVE_ITEMS),
   spawnTimer: z.number().min(0).max(60),
   nextSpawnInterval: z.number().min(0.5).max(10),
-  recordAtStart: z.number().min(0).max(99999),
+  recordAtStart: z.number().min(0).finite(),
   hasFiredRecordConfettiThisRun: z.boolean(),
   savedAt: z.number().min(1700000000000).max(2500000000000),
 });

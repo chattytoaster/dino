@@ -91,6 +91,7 @@ export function createGameDOM(root) {
 
 export function createRenderer(dom) {
   let renderedItemsSignature = '';
+  const entityElements = new Map();
 
   return function render(state) {
     // 1. Очки и рекорд
@@ -128,38 +129,54 @@ export function createRenderer(dom) {
       }
     }
 
-    // 5. Отрисовка препятствий и бонусов через безопасные методы DOM (защита от XSS)
-    const entityNodes = [];
+    // 5. Отрисовка препятствий и бонусов без пересоздания DOM (keyed DOM reconciliation)
+    const activeIds = new Set();
 
     for (const obs of state.obstacles) {
-      const el = document.createElement('div');
-      const cls =
-        obs.type === 'tall'
-          ? 'obstacle tall'
-          : obs.type === 'double'
-            ? 'obstacle double'
-            : 'obstacle';
-      el.className = cls;
+      activeIds.add(obs.id);
+      let el = entityElements.get(obs.id);
+      if (!el) {
+        el = document.createElement('div');
+        const cls =
+          obs.type === 'tall'
+            ? 'obstacle tall'
+            : obs.type === 'double'
+              ? 'obstacle double'
+              : 'obstacle';
+        el.className = cls;
+        el.style.width = `${obs.width}px`;
+        el.style.height = `${obs.height}px`;
+        dom.entitiesLayer.appendChild(el);
+        entityElements.set(obs.id, el);
+      }
       el.style.left = `${obs.x}px`;
-      el.style.width = `${obs.width}px`;
-      el.style.height = `${obs.height}px`;
-      entityNodes.push(el);
     }
 
     for (const item of state.collectibles) {
-      const el = document.createElement('div');
-      el.className = 'collectible';
-      el.style.left = `${item.x}px`;
-      el.style.bottom = `${44 + item.y}px`;
-      el.title = item.name;
+      activeIds.add(item.id);
+      let el = entityElements.get(item.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'collectible';
+        el.title = item.name;
+        el.style.bottom = `${44 + item.y}px`;
 
-      const span = document.createElement('span');
-      span.textContent = item.icon;
-      el.appendChild(span);
-      entityNodes.push(el);
+        const span = document.createElement('span');
+        span.textContent = item.icon;
+        el.appendChild(span);
+
+        dom.entitiesLayer.appendChild(el);
+        entityElements.set(item.id, el);
+      }
+      el.style.left = `${item.x}px`;
     }
 
-    dom.entitiesLayer.replaceChildren(...entityNodes);
+    for (const [id, el] of entityElements.entries()) {
+      if (!activeIds.has(id)) {
+        el.remove();
+        entityElements.delete(id);
+      }
+    }
 
     // 6. Список активных щитов (безопасное построение через DOM API)
     dom.itemsCount.textContent = String(state.activeItems.length);

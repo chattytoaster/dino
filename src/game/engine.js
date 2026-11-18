@@ -4,6 +4,7 @@ import {
   FIXED_DT,
   ITEM_DEFINITIONS,
   SCENE_WIDTH,
+  SHIELD_SPAWN_CHANCE,
 } from './constants.js';
 import {
   applyJump,
@@ -17,6 +18,7 @@ import {
   removeActiveItem,
   updateActiveItems,
   updatePhysics,
+  updateRecord,
   updateScore,
 } from './rules.js';
 import { loadGameState, saveGameState } from './storage.js';
@@ -35,6 +37,7 @@ export class GameEngine {
 
     this.lastTimestamp = 0;
     this.animId = null;
+    this.renderAnimId = null;
     this.accumulator = 0;
     this.saveTimer = 0;
 
@@ -65,6 +68,19 @@ export class GameEngine {
     this.accumulator = 0;
   }
 
+  requestRender() {
+    if (this.state.status === 'running') {
+      return;
+    }
+    if (this.renderAnimId !== null) {
+      return;
+    }
+    this.renderAnimId = requestAnimationFrame(() => {
+      this.renderAnimId = null;
+      this.notifyRender();
+    });
+  }
+
   start() {
     const prevRecord = this.state.record;
     const currentName = this.state.playerName;
@@ -75,7 +91,6 @@ export class GameEngine {
     this.accumulator = 0;
 
     this.save();
-    this.notifyRender();
     this.resumeLoop();
   }
 
@@ -85,25 +100,24 @@ export class GameEngine {
       return;
     }
     this.state.player = applyJump(this.state.player);
-    this.notifyRender();
   }
 
   setPlayerName(name) {
     this.state.playerName = (name || '').slice(0, 30);
     this.save();
-    this.notifyRender();
+    this.requestRender();
   }
 
   removeItem(id) {
     this.state.activeItems = removeActiveItem(this.state.activeItems, id);
     this.save();
-    this.notifyRender();
+    this.requestRender();
   }
 
   clearItems() {
     this.state.activeItems = [];
     this.save();
-    this.notifyRender();
+    this.requestRender();
   }
 
   resumeLoop() {
@@ -147,7 +161,7 @@ export class GameEngine {
     };
     this.state.obstacles.push(obstacle);
 
-    if (Math.random() < 0.35) {
+    if (Math.random() < SHIELD_SPAWN_CHANCE) {
       const def = ITEM_DEFINITIONS.shield;
       const collectibleY = Math.random() < 0.5 ? 20 : 90;
       this.state.collectibles.push({
@@ -168,17 +182,7 @@ export class GameEngine {
     this.state.score = updateScore(this.state.score, this.state.speed, dt);
     const currentScoreInt = Math.floor(this.state.score);
 
-    if (currentScoreInt > this.state.record) {
-      if (
-        !this.state.hasFiredRecordConfettiThisRun &&
-        this.state.recordAtStart > 0 &&
-        currentScoreInt > this.state.recordAtStart
-      ) {
-        fireRecordConfetti();
-        this.state.hasFiredRecordConfettiThisRun = true;
-      }
-      this.state.record = currentScoreInt;
-    }
+    this.state = updateRecord(this.state, currentScoreInt, fireRecordConfetti);
 
     this.state.speed = calculateSpeed(this.state.score);
 
@@ -283,6 +287,10 @@ export class GameEngine {
 
   destroy() {
     this.stopLoop();
+    if (this.renderAnimId !== null) {
+      cancelAnimationFrame(this.renderAnimId);
+      this.renderAnimId = null;
+    }
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }

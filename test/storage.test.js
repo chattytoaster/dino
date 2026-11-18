@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadGameState, saveGameState } from '../src/game/storage.js';
+import { loadGameState, saveGameState, clearGameState } from '../src/game/storage.js';
 import { createInitialState } from '../src/game/rules.js';
 
 class MockStorage {
@@ -100,16 +100,43 @@ describe('Сохранение и валидация через Zod (storage and
     assert.equal(storage.getItem('dino-game-state'), null);
   });
 
-  it('абсурдные значения (например 1000000000) отклоняются схемой', () => {
+  it('пустое имя игрока (удалённое пользователем) корректно сохраняется и загружается', () => {
+    const storage = new MockStorage();
+    const stateWithEmptyName = {
+      ...createInitialState(100, ''),
+      playerName: '',
+    };
+    saveGameState(stateWithEmptyName, storage);
+
+    const loaded = loadGameState(storage);
+    assert.equal(loaded.playerName, '');
+    assert.equal(loaded.record, 100);
+  });
+
+  it('счёт больше 99999 (например 100000) успешно сохраняется и восстанавливается', () => {
+    const storage = new MockStorage();
+    const highState = {
+      ...createInitialState(250000),
+      score: 150000,
+      record: 250000,
+    };
+    saveGameState(highState, storage);
+
+    const loaded = loadGameState(storage);
+    assert.equal(loaded.score, 150000);
+    assert.equal(loaded.record, 250000);
+  });
+
+  it('абсурдная скорость (1000000000) отклоняется схемой', () => {
     const storage = new MockStorage();
     const absurdPayload = {
       ...createInitialState(100),
-      score: 1000000000, // недопустимо большой счёт
+      speed: 1000000000,
     };
     storage.setItem('dino-game-state', JSON.stringify(absurdPayload));
 
     const state = loadGameState(storage);
-    assert.equal(state.score, 0); // сброшено к начальному
+    assert.equal(state.speed, 320); // сброшено к начальному BASE_SPEED
   });
 
   it('устаревший timestamp savedAt (1000000000) отклоняется схемой', () => {
@@ -122,5 +149,12 @@ describe('Сохранение и валидация через Zod (storage and
 
     const state = loadGameState(storage);
     assert.equal(state.score, 0); // сброшено к начальному
+  });
+
+  it('clearGameState корректно удаляет запись из хранилища', () => {
+    const storage = new MockStorage();
+    storage.setItem('dino-game-state', JSON.stringify(createInitialState(100)));
+    clearGameState(storage);
+    assert.equal(storage.getItem('dino-game-state'), null);
   });
 });

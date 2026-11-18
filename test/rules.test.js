@@ -13,6 +13,9 @@ import {
   removeActiveItem,
   createInitialState,
   moveEntities,
+  updateRecord,
+  updateActiveItems,
+  getPlayerBox,
 } from '../src/game/rules.js';
 import { BASE_SPEED, JUMP_SPEED, MAX_SPEED, MAX_ACTIVE_ITEMS } from '../src/game/constants.js';
 
@@ -184,35 +187,94 @@ describe('Правила игры (game rules)', () => {
   });
 
   describe('Правило 7: Побитие рекорда за партию (конфетти только 1 раз)', () => {
-    it('салют срабатывает ровно один раз при первом превышении рекорда', () => {
-      const state = {
+    it('функция updateRecord обновляет рекорд и вызывает коллбэк салюта ровно один раз за забег', () => {
+      let state = {
         ...createInitialState(100),
         status: 'running',
+        record: 100,
         recordAtStart: 100,
         hasFiredRecordConfettiThisRun: false,
       };
       let fireCount = 0;
-
-      const checkRecordBreak = (score) => {
-        if (
-          !state.hasFiredRecordConfettiThisRun &&
-          state.recordAtStart > 0 &&
-          score > state.recordAtStart
-        ) {
-          fireCount += 1;
-          state.hasFiredRecordConfettiThisRun = true;
-        }
+      const onRecordBreak = () => {
+        fireCount += 1;
       };
 
-      checkRecordBreak(99);
+      state = updateRecord(state, 99, onRecordBreak);
+      assert.equal(state.record, 100);
       assert.equal(fireCount, 0);
+      assert.equal(state.hasFiredRecordConfettiThisRun, false);
 
-      checkRecordBreak(101);
+      state = updateRecord(state, 101, onRecordBreak);
+      assert.equal(state.record, 101);
       assert.equal(fireCount, 1);
+      assert.equal(state.hasFiredRecordConfettiThisRun, true);
 
-      checkRecordBreak(102);
-      checkRecordBreak(150);
+      state = updateRecord(state, 102, onRecordBreak);
+      state = updateRecord(state, 150, onRecordBreak);
+      assert.equal(state.record, 150);
       assert.equal(fireCount, 1);
+    });
+
+    it('при recordAtStart равном 0 салют не вызывается', () => {
+      let state = {
+        ...createInitialState(0),
+        status: 'running',
+        record: 0,
+        recordAtStart: 0,
+        hasFiredRecordConfettiThisRun: false,
+      };
+      let fireCount = 0;
+      state = updateRecord(state, 10, () => {
+        fireCount += 1;
+      });
+      assert.equal(state.record, 10);
+      assert.equal(fireCount, 0);
+    });
+
+    it('после перезагрузки страницы с hasFiredRecordConfettiThisRun: true салют не вызывается повторно', () => {
+      let state = {
+        ...createInitialState(100),
+        status: 'running',
+        record: 150,
+        recordAtStart: 100,
+        hasFiredRecordConfettiThisRun: true,
+      };
+      let fireCount = 0;
+      state = updateRecord(state, 160, () => {
+        fireCount += 1;
+      });
+      assert.equal(state.record, 160);
+      assert.equal(fireCount, 0);
+    });
+  });
+
+  describe('Правило 8: Обновление таймеров активных предметов', () => {
+    it('уменьшает timeLeft и удаляет истёкшие предметы, сохраняя бессрочные', () => {
+      const items = [
+        { id: '1', type: 'shield', name: 'Временный', icon: '🛡️', timeLeft: 1.0 },
+        { id: '2', type: 'shield', name: 'Постоянный', icon: '🛡️' },
+      ];
+
+      const afterHalfSec = updateActiveItems(items, 0.5);
+      assert.equal(afterHalfSec.length, 2);
+      assert.equal(afterHalfSec[0].timeLeft, 0.5);
+
+      const afterExpiry = updateActiveItems(afterHalfSec, 0.6);
+      assert.equal(afterExpiry.length, 1);
+      assert.equal(afterExpiry[0].id, '2');
+    });
+  });
+
+  describe('Правило 9: Получение хитбокса игрока', () => {
+    it('возвращает корректные координаты и размеры хитбокса', () => {
+      const player = { y: 45, vy: 100, isJumping: true };
+      const box = getPlayerBox(player);
+
+      assert.equal(box.x, 80);
+      assert.equal(box.y, 45);
+      assert.equal(box.width, 48);
+      assert.equal(box.height, 50);
     });
   });
 });
