@@ -102,7 +102,7 @@ h1 {
   line-height: 52px;
   text-align: center;
   transform: scaleX(-1);
-  transition: bottom .12s ease;
+  transition: bottom .28s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .player::before {
@@ -110,7 +110,7 @@ h1 {
 }
 
 .player.jumping {
-  bottom: 135px;
+  bottom: 140px;
 }
 
 .obstacle {
